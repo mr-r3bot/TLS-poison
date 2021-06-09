@@ -57,7 +57,7 @@ def fill_hosts_list():
 
 
 def receiveData(udps):
-    types = {1: "A", 2: "NS", 15: "MX", 16: "TXT", 28: "AAAA"}
+    types = {1: "A", 2: "NS", 15: "MX", 16: "TXT", 28: "AAAA", 257: "CAA"}
     data, addr = udps.recvfrom(1024)
     dnsD = dnslib.DNSRecord.parse(data)
     try:
@@ -135,6 +135,18 @@ def spoofed_answer(answer, domain, IP):
         ))
     return answer
 
+def answer_txt_record(answer, domain):
+    with open("txt_record.txt", "rb") as file:
+        txt_record = file.read()
+        txt = dnslib.TXT(txt_record.decode("utf-8"))
+        answer.add_answer(*dnslib.RR.fromZone(f'{domain} 300 IN TXT {txt_record.decode("utf-8")}'))
+        print ("Answering with: \n", answer)
+        return answer
+
+def answer_caa_record(answer, domain):
+    answer.add_answer(*dnslib.RR.fromZone(f'{domain} 60 IN CAA 0 issue "letsencrypt.org"'))
+    print ("Answering with: \n", answer)
+    return answer
 
 def main_loop(udps):
     while True:
@@ -143,6 +155,12 @@ def main_loop(udps):
         if type == "A" and ip:
             print("Answering with %s" % ip)
             answer = spoofed_answer(answer, domain, ip)
+            sendData(udps, addr, answer)
+        elif type == "TXT":
+            answer = answer_txt_record(answer, domain)
+            sendData(udps, addr, answer)
+        elif type == "CAA":
+            answer = answer_caa_record(answer, domain)
             sendData(udps, addr, answer)
         else:
             answer = forwarded_dns_request(data)
